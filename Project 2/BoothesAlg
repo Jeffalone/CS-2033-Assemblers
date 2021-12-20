@@ -1,0 +1,247 @@
+.data
+promptMultiplicand:	.asciiz "Enter the Multiplicand: " 
+promptMultiplier:	.asciiz "Enter the Multiplier: " 
+iterationString:	.asciiz "\niteration: "
+qvaluesString:	.asciiz "Q Values = "
+Tab:		.asciiz "\t"
+newline: 	.asciiz "\n"
+stringResult:	.asciiz "Result Binary: "
+multSign:	.asciiz " x "
+.text
+Main:
+    addi $s2, $zero, 45 # Minus Sign 
+    addi $s1, $zero, 10 # New Line Terminator
+    addi $s0, $zero, 0x10010000 # string head
+    
+    li $v0, 4 # print prompt for multiplicand
+    la $a0, promptMultiplicand
+    syscall
+    
+    addi $v0, $zero, 8 # io call
+    addi $a0, $zero, 0x10010000 # pass address
+    addi $a1, $zero, 9 # pass max length
+    syscall
+
+    addi $a0, $zero, 0x10010000 
+    jal ParseInt
+    
+    
+    move $s3, $v0 #save int 1
+    
+    li $v0, 4 # print prompt for multiplier
+    la $a0, promptMultiplier
+    syscall
+    
+    
+    addi $v0, $zero, 8 # io call
+    addi $a0, $zero, 0x10010000 # pass address
+    addi $a1, $zero, 9 # pass max length
+    syscall
+    
+    jal ParseInt
+    
+    move $s4, $v0 #save int 2
+    move $a0, $s3 #load multiplicand/multilier
+    move $a1, $s4
+    
+    jal Booths
+    j Exit
+ 
+# Prodedure  to apply booths algorithm to multiply input numbers 
+# Parameters: a0 -> multplicand, $a1 -> multiplier
+# Return: $v0 -> lower register of result, $v1 -> upper register of result
+Booths:
+	move $t0, $a0 # multiplicand
+	move $t1, $a1 # multiplier 
+	li $t2, 0 # iteration counter
+	li $t3, 0 # q-1
+	li $t4, 0 # q 
+	
+	li $s3, 0 # result lower
+	li $s4, 0 # result upper
+	
+	li $v0, 1
+	move $a0, $t0
+	syscall 
+	
+	li $v0, 4
+	la $a0, multSign
+	syscall 
+	
+	li $v0, 1
+	move $a0, $t1
+	syscall 
+BLoop:
+	beq $t2, 33, print
+	li $v0, 4 #print iteration count string 
+	la $a0, iterationString
+	syscall
+	
+	move $a0, $t2 # print count 
+	li $v0, 1
+	syscall
+	
+	li $v0, 4 #print tab for spacing
+	la $a0, Tab
+	syscall
+	
+	li $v0, 35 # print lower results 
+	move $a0, $s3
+	syscall
+	
+	li $v0, 4 #print tab for spacing
+	la $a0, Tab
+	syscall
+	
+	li $v0, 35 # print upper results 
+	move $a0, $s4
+	syscall
+	
+	andi $t4, $t1, 1 #get q bit
+	
+	li $v0, 4 #print tab for spacing
+	la $a0, Tab
+	syscall
+	
+	li $v0, 4 #print q values string
+	la $a0, qvaluesString
+	syscall
+	
+	li $v0, 1 #print q
+	move $a0, $t4
+	syscall
+	
+	li $v0, 1
+	move $a0, $t3 #print q-1
+	syscall
+	
+	beq $t4, $t3, Matching #checks if in middle of run 
+	beq $t4, $zero, q_zero #checks if end of run 
+	j q_one			#checks if beginning of run 
+	
+Matching: #case for if q an q-1 are the same
+	andi $t7, $s3, 1 
+	beq $t7, 1, overflow #check if shifting will result in overflow
+	srl $s4, $s4, 1 # shift 
+	j update
+
+q_zero: # case for 01 operations reversed because of right shifting
+	add $s3, $s3, $t0 # add multiplicand to result
+	li $t3, 0 # set q-1 bit to zero
+	andi $t7, $s3, 1
+	bne $t7, $zero, overflow # check if right shifting will cause overflow into next register
+	srl $s4, $s4, 1
+	j update
+	
+q_one:	# case for 10 operations reversed because of right shifting
+	sub $s3, $s3, $t0 # subtract multiplicand from result
+	ori $t3, $t3, 1 
+	andi $t7, $s3, 1 # check if right shifting will cause overflow into next register
+	bne $t7, $zero, overflow
+	srl $s4, $s4, 1
+	j update
+	
+update: #upadate all registers with shifts that occur on each step 
+	sra $s3, $s3, 1 #shift lower right by 1 
+	ror $t1, $t1, 1 # rotate multiplier bits
+	addi $t2, $t2, 1 #increment counter
+	beq $t2, 32, check #check if nearing end of iteration
+	j BLoop
+overflow: 
+	srl $s4, $s4, 1 #right shift upper register
+	ori $s4, $s4, 0x80000000 # carry overflowed bit into this register
+	j update
+check:
+	move $t5, $s3 #update temp values to upper and lower values of result
+	move $t6 , $s4
+	j BLoop
+print:
+	li $v0, 4
+	la $a0, newline #print new line for spacing
+	syscall
+	
+	li $v0, 4
+	la $a0, newline
+	syscall
+	
+	li $v0, 4
+   	la $a0, stringResult #print result string
+   	syscall
+	
+	li $v0, 35
+	move $a0, $t5 #print result upper
+	syscall
+	
+	li $v0, 35
+	move $a0, $t6 #print result lower
+	syscall 
+	
+	move $v0, $t6
+	move $v1, $t5
+	
+	jr $ra
+
+# Procedure (non leaf) to deterine string value.
+#Parameters: $a0 -> Addr of string head 
+#Return: $v0 -> Decimal representation of number in binary. 
+ParseInt: 
+    sw $ra, 0($sp) # store return address on stack 
+    jal ValidateFindEnd
+    lw $ra, 0($sp) # restore return address 
+
+    addi $t1, $zero, 1 # initialize power of ten
+    addi $t0, $v0, 0 # initialize current byte counter
+    add $t2, $zero, $zero # initialize accumlator 
+Loop:
+    lb $t3, 0($t0)
+    beq $t3, $s1, ReturnVal # checks if first byte is end character otherwise is redundant since validateFindEnd removes the end character. 
+    beq $t3, $s2, Negate # Checks if needs to negate. Loop is done if negate. 
+
+    sub $t3, $t3, 48 # converts ascii value to integer value
+    mul $t3, $t3, $t1 # multiplies by current place value
+    mul $t1, $t1, 10 # increase place value
+    add $t2, $t2, $t3 # add to accumulator
+    beq $a0, $t0, ReturnVal
+    addi $t0, $t0, -1
+    j Loop
+Negate:
+    mul $t2, $t2, -1
+ReturnVal:
+    addi $v0, $t2, 0 # return final sum
+    jr $ra
+
+
+#Procedure (leaf) to find end of string and verify input string is a valid integer string. Includes input validation and graceful handling of empty string. 
+#Parameters: $a0 -> addr of string head. 
+#Return: $v0 -> address of last digit, $v1 -> 0 if positive 1 if negative (was going to be used but was phased out)
+ValidateFindEnd: 
+    add $t1, $a0, $zero # intialize first byte. 
+    add $v1, $zero, $zero # assume positive. 
+
+    lb $t2, 0($t1)# loads first byte to check if it is negative
+    beq $t2, $s1, Empty # checks if first byte is end character 
+    beq $t2, $s2, Pass # Passes validation if first char is a negative sign 
+ByteLoop:
+    lb $t2, 0($t1)# load the byte to be evaluated 
+
+    beq $t2, $s1, Return # check end of string
+    beq $t2, 0x00, Return #check for null terminator just in case autograder does not insert new line after input
+
+    slti $t3, $t2, 48 # bounds checking for ascii digits
+    beq $t3, 1, Exit
+    slti $t3, $t2, 58 
+    bne $t3, 1, Exit
+    addi $t1, $t1, 1 # increment byte. 
+    j ByteLoop
+Pass:
+    addi $t1, $t1, 1 # increment byte. 
+    addi $v1, $zero, 1 # set negative value. 
+    j ByteLoop
+Return:
+    addi $t1, $t1, -1 #excludes end character and sets address to address of last ascii character 
+    add $v0, $t1, $zero
+    jr $ra
+Empty:
+    add $v0, $t1, $zero # does not subtract one if first character is end character
+    jr $ra
+Exit:
